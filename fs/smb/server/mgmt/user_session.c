@@ -3,6 +3,7 @@
  *   Copyright (C) 2018 Samsung Electronics Co., Ltd.
  */
 
+#include <linux/atomic.h>
 #include <linux/list.h>
 #include <linux/slab.h>
 #include <linux/rwsem.h>
@@ -18,8 +19,11 @@
 #include "../vfs_cache.h"
 #include "../misc.h"
 #include "../stats.h"
+#include "../server.h"
 
 static DEFINE_IDA(session_ida);
+/* Charge sessions until destruction, including outstanding references. */
+static atomic64_t session_count = ATOMIC64_INIT(0);
 
 #define SESSION_HASH_BITS		12
 #define KSMBD_MAX_PENDING_SESSIONS	1
@@ -412,6 +416,7 @@ void ksmbd_session_destroy(struct ksmbd_session *sess)
 	ksmbd_release_id(&session_ida, sess->id);
 	ida_destroy(&sess->tree_conn_ida);
 	kfree_sensitive(sess);
+	atomic64_dec(&session_count);
 }
 
 static void ksmbd_session_remove_from_table(struct ksmbd_session *sess)
@@ -838,9 +843,17 @@ static struct ksmbd_session *__session_create(int protocol)
 	if (protocol != CIFDS_SESSION_FLAG_SMB2)
 		return NULL;
 
-	sess = kzalloc_obj(struct ksmbd_session, KSMBD_DEFAULT_GFP);
-	if (!sess)
+	if (atomic64_inc_return(&session_count) >
+	    READ_ONCE(server_conf.max_active_sessions)) {
+		atomic64_dec(&session_count);
 		return NULL;
+	}
+
+	sess = kzalloc_obj(struct ksmbd_session, KSMBD_DEFAULT_GFP);
+	if (!sess) {
+		atomic64_dec(&session_count);
+		return NULL;
+	}
 
 	ida_init(&sess->tree_conn_ida);
 

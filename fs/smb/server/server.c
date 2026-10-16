@@ -472,6 +472,7 @@ static int server_conf_init(void)
 				KSMBD_AUTH_MSKRB5;
 #endif
 	server_conf.max_inflight_req = SMB2_MAX_CREDITS;
+	server_conf.max_active_sessions = KSMBD_DEFAULT_MAX_ACTIVE_SESSIONS;
 	return 0;
 }
 
