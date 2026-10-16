@@ -2478,6 +2478,9 @@ int smb2_sess_setup(struct ksmbd_work *work)
 
 	ksmbd_conn_lock(conn);
 	if (!req->hdr.SessionId) {
+		rc = ksmbd_prepare_session_setup(conn);
+		if (rc)
+			goto out_err;
 		sess = ksmbd_smb2_session_create();
 		if (!sess) {
 			rc = -ENOMEM;

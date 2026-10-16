@@ -98,6 +98,7 @@ struct ksmbd_session *ksmbd_session_lookup(struct ksmbd_conn *conn,
 					   unsigned long long id);
 bool is_ksmbd_session_in_connection(struct ksmbd_conn *conn,
 				     unsigned long long id);
+int ksmbd_prepare_session_setup(struct ksmbd_conn *conn);
 int ksmbd_session_register(struct ksmbd_conn *conn,
 			   struct ksmbd_session *sess);
 void ksmbd_session_unregister(struct ksmbd_conn *conn,
