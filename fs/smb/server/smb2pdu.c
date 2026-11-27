@@ -9768,7 +9768,9 @@ static int smb2_prep_rdma_read(struct ksmbd_work *work,
 	crypto->NonceLength = cpu_to_le16(nonce_len);
 	nonce = crypto->Signature + SMB2_SIGNATURE_SIZE;
 
-	get_random_bytes(nonce, nonce_len);
+	err = ksmbd_new_enc_nonce(work->sess, conn->cipher_type, nonce);
+	if (err)
+		return err;
 	err = ksmbd_crypt_rdma(conn,
 			       work->sess->smb3encryptionkey,
 			       data, datalen, nonce, nonce_len,
@@ -13350,24 +13352,23 @@ void smb3_preauth_hash_rsp(struct ksmbd_work *work)
 	}
 }
 
-static void fill_transform_hdr(void *tr_buf, char *old_buf, __le16 cipher_type)
+static int fill_transform_hdr(struct ksmbd_work *work, void *tr_buf)
 {
 	struct smb2_transform_hdr *tr_hdr = tr_buf + 4;
-	struct smb2_hdr *hdr = smb_get_msg(old_buf);
-	unsigned int orig_len = get_rfc1002_len(old_buf);
+	struct smb2_hdr *hdr = smb_get_msg(work->response_buf);
+	unsigned int orig_len = get_rfc1002_len(work->response_buf);
 
 	/* tr_buf must be cleared by the caller */
 	tr_hdr->ProtocolId = SMB2_TRANSFORM_PROTO_NUM;
 	tr_hdr->OriginalMessageSize = cpu_to_le32(orig_len);
 	tr_hdr->Flags = cpu_to_le16(TRANSFORM_FLAG_ENCRYPTED);
-	if (cipher_type == SMB2_ENCRYPTION_AES128_GCM ||
-	    cipher_type == SMB2_ENCRYPTION_AES256_GCM)
-		get_random_bytes(&tr_hdr->Nonce, SMB3_AES_GCM_NONCE);
-	else
-		get_random_bytes(&tr_hdr->Nonce, SMB3_AES_CCM_NONCE);
 	memcpy(&tr_hdr->SessionId, &hdr->SessionId, 8);
 	inc_rfc1001_len(tr_buf, sizeof(struct smb2_transform_hdr));
 	inc_rfc1001_len(tr_buf, orig_len);
+
+	/* the same session as in ksmbd_get_encryption_key() */
+	return ksmbd_new_enc_nonce(work->sess, work->conn->cipher_type,
+				   tr_hdr->Nonce);
 }
 
 int smb3_encrypt_resp(struct ksmbd_work *work)
@@ -13381,7 +13382,11 @@ int smb3_encrypt_resp(struct ksmbd_work *work)
 		return rc;
 
 	/* fill transform header */
-	fill_transform_hdr(tr_buf, work->response_buf, work->conn->cipher_type);
+	rc = fill_transform_hdr(work, tr_buf);
+	if (rc) {
+		kfree(tr_buf);
+		return rc;
+	}
 
 	iov[0].iov_base = tr_buf;
 	iov[0].iov_len = sizeof(struct smb2_transform_hdr) + 4;
