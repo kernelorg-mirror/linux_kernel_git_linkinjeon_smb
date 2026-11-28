@@ -3747,6 +3747,10 @@ static noinline int smb2_set_stream_name_xattr(const struct path *path,
 		return -EBADF;
 	}
 
+	/* FILE_OVERWRITE does not create a missing stream (MS-FSA 2.1.5.1.2) */
+	if (fp->cdoption == FILE_OVERWRITE_LE)
+		return -EBADF;
+
 	if (!test_tree_conn_flag(fp->tcon, KSMBD_TREE_CONN_FLAG_WRITABLE))
 		return -EACCES;
 
