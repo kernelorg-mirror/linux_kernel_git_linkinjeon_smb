@@ -5484,9 +5484,15 @@ resolve_path:
 	fp->change_time = ksmbd_UnixTimeToNT(stat.ctime);
 	fp->allocation_size = S_ISDIR(stat.mode) ? 0 :
 		(alloc_size ?: stat.blocks << 9);
-	if (created || fp->f_ci->m_fattr == 0)
+	/*
+	 * The requested attributes are for a new file. An open of an existing
+	 * file does not change its attributes, except for an overwrite below.
+	 */
+	if (created)
 		fp->f_ci->m_fattr =
 			cpu_to_le32(smb2_get_dos_mode(&stat, le32_to_cpu(req->FileAttributes)));
+	else if (fp->f_ci->m_fattr == 0)
+		fp->f_ci->m_fattr = cpu_to_le32(smb2_get_dos_mode(&stat, 0));
 
 	if (!created)
 		smb2_update_xattrs(tcon, &path, fp);
