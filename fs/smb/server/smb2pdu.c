@@ -3755,10 +3755,12 @@ static noinline int smb2_set_stream_name_xattr(const struct path *path,
 		return -EACCES;
 
 	rc = ksmbd_vfs_setxattr(idmap, path, xattr_stream_name, NULL, 0, 0, true);
-	if (rc < 0)
+	if (rc < 0) {
 		pr_err("Failed to store XATTR stream name :%d\n", rc);
-	else
-		*created = true;
+		/* smb2_open() reports -EPERM as a sharing violation */
+		return rc == -EPERM ? -EACCES : rc;
+	}
+	*created = true;
 	return 0;
 }
 
